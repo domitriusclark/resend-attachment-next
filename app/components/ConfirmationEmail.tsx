@@ -24,7 +24,7 @@ export function ConfirmationEmail({ firstName }: { firstName: string }) {
             website.
           </Text>
           <Text>Best regards,</Text>
-          <Text>Your Travel Agency Team</Text>
+          <Text>Traveling with Dom</Text>
         </Container>
       </Body>
     </Html>

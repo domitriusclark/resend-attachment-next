@@ -1,72 +1,83 @@
-import { revalidatePath } from "next/cache";
-import { Resend } from "resend";
-import { ConfirmationEmail } from "./ConfirmationEmail";
-import { FollowUpEmail } from "./FollowUpEmail";
+"use client";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { useState } from "react";
+import { handleContactFormSubmission } from "@/app/actions/contactFormAction";
 
-async function submitForm(formData: FormData) {
-  "use server";
-
-  // Process the form data
-  const firstName = formData.get("firstName") as string;
-  const lastName = formData.get("lastName") as string;
-  const email = formData.get("email") as string;
-  const phone = formData.get("phone") as string;
-  const message = formData.get("message") as string;
-  const file = formData.get("file") as File;
-  const emailConsent = formData.get("emailConsent") === "on";
-
-  // Here you would typically save the data to a database
-  // and handle file upload to a storage service
-  console.log("Form submitted:", {
-    firstName,
-    lastName,
-    email,
-    phone,
-    message,
-    file,
-    emailConsent,
+export default function ContactForm({
+  onSubmitMessage,
+}: {
+  onSubmitMessage: (message: string) => void;
+}) {
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    message: "",
+    emailConsent: false,
+    attachment: "",
+    startDate: "",
+    endDate: "",
   });
 
-  // Send confirmation email
-  try {
-    await resend.emails.send({
-      from: "Travel Agency <noreply@youragency.com>",
-      to: email,
-      subject: "Thank you for contacting us!",
-      react: ConfirmationEmail({ firstName }),
+  const [fileBase64, setFileBase64] = useState<string | null>(null);
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value, type, checked } = e.target as HTMLInputElement;
+    setFormData((prevData) => ({
+      ...prevData,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(",")[1];
+        setFileBase64(base64);
+        const hiddenInput = document.createElement("input");
+        hiddenInput.type = "hidden";
+        hiddenInput.name = "fileBase64";
+        hiddenInput.value = base64;
+        event.target.form?.appendChild(hiddenInput);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const form = new FormData();
+    Object.entries(formData).forEach(([key, value]) => {
+      form.append(key, value as string);
     });
 
-    // Schedule follow-up email for 24 hours later
-    const twentyFourHoursLater = new Date(
-      Date.now() + 24 * 60 * 60 * 1000
-    ).toISOString();
-    await resend.emails.send({
-      from: "Travel Agency <noreply@youragency.com>",
-      to: email,
-      subject: "Follow-up on your travel inquiry",
-      react: FollowUpEmail({ firstName }),
-      scheduledAt: twentyFourHoursLater,
-    });
-  } catch (error) {
-    console.error("Error sending email:", error);
-  }
+    if (fileBase64) {
+      form.append("fileBase64", fileBase64);
+    }
 
-  // Revalidate the current page to show a success message
-  revalidatePath("/");
-}
+    const result = await handleContactFormSubmission(form);
 
-export default function ContactForm() {
+    if (result.success) {
+      onSubmitMessage(result.message);
+    } else {
+      onSubmitMessage(result.message);
+    }
+  };
+
   return (
-    <div className="bg-white shadow-md mx-auto rounded-lg w-full max-w-2xl overflow-hidden">
+    <div className="bg-white shadow-md rounded-lg w-full max-w-2xl text-black overflow-hidden">
       <div className="border-gray-200 bg-gray-50 px-6 py-4 border-b">
         <h2 className="font-bold text-2xl text-gray-800">Contact Us</h2>
         <p className="mt-1 text-gray-600 text-sm">
           Get in touch with our travel experts
         </p>
       </div>
-      <form action={submitForm} className="space-y-4 px-6 py-4">
+      <form onSubmit={handleSubmit} className="space-y-4 px-6 py-4">
         <div className="gap-4 grid grid-cols-2">
           <div>
             <label
@@ -81,6 +92,8 @@ export default function ContactForm() {
               type="text"
               placeholder="John"
               required
+              value={formData.firstName}
+              onChange={handleChange}
               className="border-gray-300 shadow-sm px-3 py-2 border focus:border-blue-500 rounded-md focus:ring-2 focus:ring-blue-500 w-full focus:outline-none"
             />
           </div>
@@ -97,6 +110,8 @@ export default function ContactForm() {
               type="text"
               placeholder="Doe"
               required
+              value={formData.lastName}
+              onChange={handleChange}
               className="border-gray-300 shadow-sm px-3 py-2 border focus:border-blue-500 rounded-md focus:ring-2 focus:ring-blue-500 w-full focus:outline-none"
             />
           </div>
@@ -114,6 +129,8 @@ export default function ContactForm() {
             type="email"
             placeholder="john.doe@example.com"
             required
+            value={formData.email}
+            onChange={handleChange}
             className="border-gray-300 shadow-sm px-3 py-2 border focus:border-blue-500 rounded-md focus:ring-2 focus:ring-blue-500 w-full focus:outline-none"
           />
         </div>
@@ -130,8 +147,46 @@ export default function ContactForm() {
             type="tel"
             placeholder="+1 (555) 123-4567"
             required
+            value={formData.phone}
+            onChange={handleChange}
             className="border-gray-300 shadow-sm px-3 py-2 border focus:border-blue-500 rounded-md focus:ring-2 focus:ring-blue-500 w-full focus:outline-none"
           />
+        </div>
+        <div className="gap-4 grid grid-cols-2">
+          <div>
+            <label
+              htmlFor="startDate"
+              className="block mb-1 font-medium text-gray-700 text-sm"
+            >
+              Start Date
+            </label>
+            <input
+              id="startDate"
+              name="startDate"
+              type="date"
+              required
+              value={formData.startDate}
+              onChange={handleChange}
+              className="border-gray-300 shadow-sm px-3 py-2 border focus:border-blue-500 rounded-md focus:ring-2 focus:ring-blue-500 w-full focus:outline-none"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="endDate"
+              className="block mb-1 font-medium text-gray-700 text-sm"
+            >
+              End Date
+            </label>
+            <input
+              id="endDate"
+              name="endDate"
+              type="date"
+              required
+              value={formData.endDate}
+              onChange={handleChange}
+              className="border-gray-300 shadow-sm px-3 py-2 border focus:border-blue-500 rounded-md focus:ring-2 focus:ring-blue-500 w-full focus:outline-none"
+            />
+          </div>
         </div>
         <div>
           <label
@@ -146,6 +201,8 @@ export default function ContactForm() {
             placeholder="Tell us about your travel plans..."
             required
             rows={4}
+            value={formData.message}
+            onChange={handleChange}
             className="border-gray-300 shadow-sm px-3 py-2 border focus:border-blue-500 rounded-md focus:ring-2 focus:ring-blue-500 w-full focus:outline-none"
           ></textarea>
         </div>
@@ -154,20 +211,17 @@ export default function ContactForm() {
             htmlFor="file"
             className="block mb-1 font-medium text-gray-700 text-sm"
           >
-            Attach a File (optional)
+            Attachment
           </label>
-          <input
-            id="file"
-            name="file"
-            type="file"
-            className="border-gray-300 shadow-sm px-3 py-2 border focus:border-blue-500 rounded-md focus:ring-2 focus:ring-blue-500 w-full focus:outline-none"
-          />
+          <input type="file" onChange={handleFileChange} />
         </div>
         <div className="flex items-center">
           <input
             id="emailConsent"
             name="emailConsent"
             type="checkbox"
+            checked={formData.emailConsent}
+            onChange={handleChange}
             className="border-gray-300 rounded focus:ring-blue-500 w-4 h-4 text-blue-600"
           />
           <label
